@@ -1004,6 +1004,8 @@ bool MyMesh::formatFileSystem() {
   return LittleFS.format();
 #elif defined(ESP32)
   return SPIFFS.format();
+#elif defined(LINUX_PLATFORM)
+  return LinuxFS.wipeAll();
 #else
 #error "need to implement file system erase"
   return false;
@@ -1158,6 +1160,8 @@ void MyMesh::saveIdentity(const mesh::LocalIdentity &new_id) {
 #elif defined(ESP32)
   IdentityStore store(*_fs, "/identity");
 #elif defined(RP2040_PLATFORM)
+  IdentityStore store(*_fs, "/identity");
+#elif defined(LINUX_PLATFORM)
   IdentityStore store(*_fs, "/identity");
 #else
 #error "need to define saveIdentity()"

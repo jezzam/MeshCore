@@ -69,6 +69,10 @@ void setup() {
   fs = &LittleFS;
   IdentityStore store(LittleFS, "/identity");
   store.begin();
+#elif defined(LINUX_PLATFORM)
+  fs = &LinuxFS;
+  IdentityStore store(LinuxFS, "/identity");
+  store.begin();
 #else
   #error "need to define filesystem"
 #endif
