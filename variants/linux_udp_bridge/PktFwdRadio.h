@@ -31,7 +31,10 @@ public:
   // RadioLibWrapper-parity surface (called directly by MyMesh.cpp):
   uint32_t getRngSeed();
   void setTxPower(int8_t dbm) { _tx_power_dbm = dbm; }
-  void setParams(float, float, uint8_t, uint8_t) { /* channel plan is fixed in global_conf_1302.json, not retuned here */ }
+  // Updates our own JSON/airtime-formula parameters only - does NOT retune the
+  // concentrator itself (that's global_conf_1302.json, outside this process's
+  // reach). Caller is responsible for keeping the two in sync.
+  void setParams(float freq, float bw, uint8_t sf, uint8_t cr) { _freq = freq; _bw = bw; _sf = sf; _cr = cr; }
   uint32_t getPacketsRecv() const { return _n_recv; }
   uint32_t getPacketsSent() const { return _n_sent; }
   uint32_t getPacketsRecvErrors() const { return _n_recv_errors; }
@@ -66,6 +69,15 @@ private:
   int8_t _tx_power_dbm = 20;
   unsigned long _send_deadline = 0;
   bool _sending = false;
+
+  // Runtime-configurable channel params - env vars override the CMake -D
+  // defaults (see begin()), so switching presets (e.g. a different region's
+  // mesh, or adjusting CR while the local mesh is still sparse - see
+  // Research_beginning_notes.md) doesn't require a rebuild. Must be kept in
+  // sync with global_conf_1302.json's actual radio_0/chan_Lora_std tuning,
+  // which this process cannot reach or verify.
+  float _freq, _bw;
+  uint8_t _sf, _cr;
 
   uint32_t _n_recv = 0, _n_sent = 0, _n_recv_errors = 0;
 };

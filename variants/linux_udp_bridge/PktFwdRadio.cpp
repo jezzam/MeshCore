@@ -47,6 +47,20 @@ void PktFwdRadio::begin() {
   // unbound fd, invisibly receiving nothing.
   if (_sock >= 0) return;
 
+  // Env vars override the CMake -D compile-time defaults, so switching
+  // presets doesn't require a rebuild - e.g. MESHCORE_LORA_FREQ=923.125
+  // MESHCORE_LORA_BW=62.5 MESHCORE_LORA_SF=8 MESHCORE_LORA_CR=6 for the
+  // Brisbane/SEQ MeshCore default (see Research_beginning_notes.md). Must be
+  // kept in sync with global_conf_1302.json's actual radio tuning by
+  // whoever's deploying this - this process has no way to read or verify
+  // that file.
+  const char* e;
+  _freq = (e = getenv("MESHCORE_LORA_FREQ")) ? atof(e) : (double)LORA_FREQ;
+  _bw   = (e = getenv("MESHCORE_LORA_BW"))   ? atof(e) : (double)LORA_BW;
+  _sf   = (e = getenv("MESHCORE_LORA_SF"))   ? (uint8_t)atoi(e) : (uint8_t)LORA_SF;
+  _cr   = (e = getenv("MESHCORE_LORA_CR"))   ? (uint8_t)atoi(e) : (uint8_t)LORA_CR;
+  Serial.printf("PktFwdRadio: channel params freq=%.3fMHz bw=%.1fkHz sf=%d cr=4/%d\n", _freq, _bw, _sf, _cr);
+
   if (sodium_init() < 0) {
     Serial.println("PktFwdRadio: sodium_init() failed");
   }
@@ -165,17 +179,17 @@ bool PktFwdRadio::startSendRaw(const uint8_t* bytes, int len) {
   sodium_bin2base64(b64, sizeof(b64), bytes, (size_t)len, sodium_base64_VARIANT_ORIGINAL);
   b64_len = strlen(b64);
 
-  char datr[16];
-  snprintf(datr, sizeof(datr), "SF%dBW%d", LORA_SF, LORA_BW);
+  char datr[24];
+  snprintf(datr, sizeof(datr), "SF%dBW%g", _sf, _bw);
 
   json txpk = {
     {"imme", true},  // Dispatcher already owns TX timing - no need for tmst-synchronized send
-    {"freq", LORA_FREQ},
+    {"freq", _freq},
     {"rfch", 0},
     {"powe", (int)_tx_power_dbm},
     {"modu", "LORA"},
     {"datr", datr},
-    {"codr", std::string("4/") + std::to_string(LORA_CR)},
+    {"codr", std::string("4/") + std::to_string(_cr)},
     {"size", len},
     {"data", std::string(b64, b64_len)},
   };
@@ -219,9 +233,9 @@ uint32_t PktFwdRadio::getEstAirtimeFor(int len_bytes) {
   // configured independently in global_conf_1302.json (not exposed in the
   // rxpk/txpk JSON, "prea" is optional and we don't set it), so this is an
   // estimate for MeshCore's own scheduling, not a transmitted parameter.
-  const double bw_hz = (double)LORA_BW * 1000.0;
-  const int sf = LORA_SF;
-  const int cr = LORA_CR - 4;  // "4/5".."4/8" -> 1..4
+  const double bw_hz = (double)_bw * 1000.0;
+  const int sf = _sf;
+  const int cr = _cr - 4;  // "4/5".."4/8" -> 1..4
   const int n_preamble = 8;
   const int H = 0;   // explicit header
   const int CRC = 1; // payload CRC enabled
@@ -243,13 +257,13 @@ uint32_t PktFwdRadio::getEstAirtimeFor(int len_bytes) {
 }
 
 // Ported verbatim from src/helpers/radiolib/RadioLibWrappers.cpp's
-// packetScoreInt, using our actual fixed SF (upstream hardcodes sf=10 as a
-// default since real hardware can dynamically receive at multiple SFs -
-// we always operate at LORA_SF, so use the real value for accuracy).
+// packetScoreInt, using our actual configured SF (upstream hardcodes sf=10 as
+// a default since real hardware can dynamically receive at multiple SFs -
+// we always operate at a single fixed _sf, so use the real value for accuracy).
 static float snr_threshold[] = {-7.5, -10, -12.5, -15, -17.5, -20};  // SF7..SF12
 
 float PktFwdRadio::packetScore(float snr, int packet_len) {
-  const int sf = LORA_SF;
+  const int sf = _sf;
   if (sf < 7 || sf > 12) return 0.0f;
   if (snr < snr_threshold[sf - 7]) return 0.0f;
 

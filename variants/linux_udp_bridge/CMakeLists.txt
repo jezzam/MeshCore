@@ -74,14 +74,14 @@ target_compile_definitions(meshcore_repeater PRIVATE
   ENABLE_ADVERT_ON_BOOT=1
   ENABLE_PRIVATE_KEY_IMPORT=1
   ENABLE_PRIVATE_KEY_EXPORT=1
-  # Matches the concentrator's already-configured chan_Lora_std "fat" channel
-  # (global_conf_1302.json: 904.6MHz, 500kHz BW, SF8) - see Research_beginning_notes.md.
-  # Placeholder pending real AU915 channel research (deliberately out of scope
-  # here - see plan notes).
-  LORA_FREQ=904.6
-  LORA_BW=500
+  # Brisbane/SEQ MeshCore default preset (MBUG wiki, wiki.mbug.com.au/en/Meshcore/Settings) -
+  # see Research_beginning_notes.md for provenance. Must match global_conf_1302.json's
+  # radio_0/chan_Lora_std retune, and whatever the local mesh is actually using -
+  # these two configs are not independently adjustable.
+  LORA_FREQ=923.125
+  LORA_BW=62.5
   LORA_SF=8
-  LORA_CR=5
+  LORA_CR=6
 )
 
 target_link_directories(meshcore_repeater PRIVATE ${SODIUM_LIBRARY_DIRS})
