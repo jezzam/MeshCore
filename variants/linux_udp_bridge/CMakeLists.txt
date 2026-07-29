@@ -81,7 +81,7 @@ target_compile_definitions(meshcore_repeater PRIVATE
   LORA_FREQ=923.125
   LORA_BW=62.5
   LORA_SF=8
-  LORA_CR=6
+  LORA_CR=5
 )
 
 target_link_directories(meshcore_repeater PRIVATE ${SODIUM_LIBRARY_DIRS})
