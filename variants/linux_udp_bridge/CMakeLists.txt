@@ -19,15 +19,18 @@ add_executable(meshcore_repeater
   ${MESHCORE_ROOT}/src/Packet.cpp
   ${MESHCORE_ROOT}/src/Utils.cpp
 
-  # --- MeshCore helpers actually referenced by MyMesh.h/.cpp (NOT the full
-  #     src/helpers/*.cpp set - several of those, e.g. AutoDiscoverRTCClock.cpp,
-  #     RTC_RX8130CE.cpp, are NOT self-guarded by #ifdef and would drag in real
-  #     I2C RTC chip libraries we don't have and don't need) ---
+  # --- MeshCore helpers actually referenced by MyMesh.h/.cpp / BaseChatMesh
+  #     (NOT the full src/helpers/*.cpp set - several of those, e.g.
+  #     AutoDiscoverRTCClock.cpp, RTC_RX8130CE.cpp, are NOT self-guarded by
+  #     #ifdef and would drag in real I2C RTC chip libraries we don't have
+  #     and don't need). RegionMap/ClientACL/CommonCLI dropped here - those
+  #     were simple_repeater-only (region-switching, multi-client ACLs); the
+  #     companion_radio role this variant now builds doesn't use them, and
+  #     our own minimal CLI (MyMesh.cpp's handleCLICommand) doesn't need them
+  #     either - see Research_beginning_notes.md for why. ---
   ${MESHCORE_ROOT}/src/helpers/AdvertDataHelpers.cpp
-  ${MESHCORE_ROOT}/src/helpers/ClientACL.cpp
-  ${MESHCORE_ROOT}/src/helpers/CommonCLI.cpp
+  ${MESHCORE_ROOT}/src/helpers/BaseChatMesh.cpp
   ${MESHCORE_ROOT}/src/helpers/IdentityStore.cpp
-  ${MESHCORE_ROOT}/src/helpers/RegionMap.cpp
   ${MESHCORE_ROOT}/src/helpers/StaticPoolPacketManager.cpp
   ${MESHCORE_ROOT}/src/helpers/TransportKeyStore.cpp
   ${MESHCORE_ROOT}/src/helpers/TxtDataHelpers.cpp
@@ -44,14 +47,22 @@ add_executable(meshcore_repeater
   ${MESHCORE_ROOT}/lib/ed25519/sign.c
   ${MESHCORE_ROOT}/lib/ed25519/verify.c
 
-  # --- the repeater application itself (upstream, 3 small LINUX_PLATFORM edits applied) ---
-  ${MESHCORE_ROOT}/examples/simple_repeater/main.cpp
-  ${MESHCORE_ROOT}/examples/simple_repeater/MyMesh.cpp
+  # --- the companion_radio application itself (upstream, minimal additive
+  #     LINUX_PLATFORM edits applied - see MyMesh.h/.cpp and DataStore.cpp).
+  #     Hybrid role: full companion protocol (WiFi/TCP, for the phone app)
+  #     running as an always-relaying repeater (client_repeat defaulted on),
+  #     plus a small custom plain-text CLI alongside it for SSH diagnostics -
+  #     see Research_beginning_notes.md for the full rationale. Replaces the
+  #     plain simple_repeater role this variant originally built. ---
+  ${MESHCORE_ROOT}/examples/companion_radio/MyMesh.cpp
+  ${MESHCORE_ROOT}/examples/companion_radio/DataStore.cpp
 
   # --- this variant ---
   ${VARIANT_ROOT}/target.cpp
-  ${VARIANT_ROOT}/linux_main.cpp
+  ${VARIANT_ROOT}/linux_main.cpp             # generic main() driver (setup()/loop()), platform-agnostic
+  ${VARIANT_ROOT}/linux_companion_main.cpp   # setup()/loop() - stdin CLI + TCP companion interface
   ${VARIANT_ROOT}/PktFwdRadio.cpp
+  ${VARIANT_ROOT}/LinuxTcpInterface.cpp
 
   # --- Linux/Arduino compatibility shim ---
   ${VARIANT_ROOT}/compat/LinuxCompat.cpp
@@ -64,7 +75,7 @@ target_include_directories(meshcore_repeater PRIVATE
   ${MESHCORE_ROOT}/src
   ${MESHCORE_ROOT}/src/helpers
   ${MESHCORE_ROOT}/lib/ed25519   # ed_25519.h
-  ${MESHCORE_ROOT}/examples/simple_repeater  # RateLimiter.h (included by MyMesh.h)
+  ${MESHCORE_ROOT}/examples/companion_radio  # MyMesh.h, DataStore.h, NodePrefs.h, AbstractUITask.h
   ${SODIUM_INCLUDE_DIRS}
 )
 
@@ -82,6 +93,10 @@ target_compile_definitions(meshcore_repeater PRIVATE
   LORA_BW=62.5
   LORA_SF=8
   LORA_CR=5
+  # Required by BaseChatMesh (group-channel support) - no compiled-in default,
+  # every real board's platformio.ini defines it explicitly. 40 matches the
+  # common value used across boards (e.g. heltec_t114, station_g2).
+  MAX_GROUP_CHANNELS=40
 )
 
 target_link_directories(meshcore_repeater PRIVATE ${SODIUM_LIBRARY_DIRS})

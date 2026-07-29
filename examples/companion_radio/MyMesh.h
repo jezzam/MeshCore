@@ -102,6 +102,18 @@ public:
 
   int  getRecentlyHeard(AdvertPath dest[], int max_num);
 
+#if defined(LINUX_PLATFORM)
+  // Minimal plain-text diagnostic CLI - not part of upstream companion_radio
+  // (which is driven entirely by the binary companion protocol). Added so the
+  // hybrid Linux/WiFi build keeps the same SSH-reachable stats-packets/
+  // stats-radio/neighbors/set-radio commands the plain simple_repeater
+  // deployment had, without pulling in CommonCLI's RegionMap/ClientACL
+  // dependencies (region-switching and multi-client ACLs, neither used by
+  // this project). Reuses the shared StatsFormatHelper so JSON output is
+  // byte-identical to what existing SSH tooling already parses.
+  void handleCLICommand(const char* command, char* reply);
+#endif
+
 protected:
   float getAirtimeBudgetFactor() const override;
   int getInterferenceThreshold() const override;

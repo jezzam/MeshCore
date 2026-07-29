@@ -878,6 +878,16 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _prefs.tx_power_dbm = LORA_TX_POWER;
   _prefs.gps_enabled = 0;       // GPS disabled by default
   _prefs.gps_interval = 0;      // No automatic GPS updates by default
+#if defined(LINUX_PLATFORM)
+  // This build is a dedicated, mains-powered infrastructure repeater that
+  // also happens to expose the companion protocol over WiFi - not a
+  // battery/portable "personal node that optionally helps out" device, which
+  // is what client_repeat=0-by-default assumes. allowPacketForward() (see
+  // Mesh.cpp) is gated on this flag either way; default it on so relay
+  // behavior is unconditional, matching the simple_repeater role this
+  // replaces.
+  _prefs.client_repeat = 1;
+#endif
   //_prefs.rx_delay_base = 10.0f;  enable once new algo fixed
 #if defined(USE_SX1262) || defined(USE_SX1268)
 #ifdef SX126X_RX_BOOSTED_GAIN
@@ -2007,6 +2017,16 @@ void MyMesh::enterCLIRescue() {
 }
 
 void MyMesh::checkCLIRescueCmd() {
+#if defined(LINUX_PLATFORM)
+  // Dead code on this platform: a hardware rescue console (BLE-pin reset,
+  // filesystem erase/rebuild, directory browsing via ESP32/NRF52-specific
+  // File::openNextFile()/isDirectory()/name()/size(), none of which our
+  // compat/FS.h shim implements) triggered by a physical button combo on
+  // boot. Nothing in this build ever calls enterCLIRescue() to set
+  // _cli_rescue true, so this is unreachable - stub it out rather than port
+  // filesystem-browsing methods our shim was never meant to have.
+  return;
+#else
   int len = strlen(cli_command);
   while (Serial.available() && len < sizeof(cli_command)-1) {
     char c = Serial.read();
@@ -2176,6 +2196,7 @@ void MyMesh::checkCLIRescueCmd() {
 
     cli_command[0] = 0;  // reset command buffer
   }
+#endif
 }
 
 void MyMesh::checkSerialInterface() {
@@ -2252,3 +2273,65 @@ bool MyMesh::advert() {
 bool MyMesh::hasPendingWork() const {
   return _mgr->getOutboundTotal() > 0 || dirty_contacts_expiry != 0;
 }
+
+#if defined(LINUX_PLATFORM)
+#include <helpers/StatsFormatHelper.h>
+
+void MyMesh::handleCLICommand(const char* command, char* reply) {
+  reply[0] = 0;
+  if (memcmp(command, "stats-packets", 13) == 0) {
+    StatsFormatHelper::formatPacketStats(reply, radio_driver, getNumSentFlood(), getNumSentDirect(),
+                                          getNumRecvFlood(), getNumRecvDirect());
+  } else if (memcmp(command, "stats-radio", 11) == 0) {
+    StatsFormatHelper::formatRadioStats(reply, _radio, radio_driver, getTotalAirTime(), getReceiveAirTime());
+  } else if (memcmp(command, "stats-core", 10) == 0) {
+    StatsFormatHelper::formatCoreStats(reply, board, *_ms, _err_flags, _mgr);
+  } else if (memcmp(command, "neighbors", 9) == 0) {
+    AdvertPath heard[ADVERT_PATH_TABLE_SIZE];
+    int n = getRecentlyHeard(heard, ADVERT_PATH_TABLE_SIZE);
+    char* dp = reply;
+    bool any = false;
+    for (int i = 0; i < n; i++) {
+      if (heard[i].recv_timestamp == 0) continue;   // empty slot
+      if (any) *dp++ = ' ';
+      dp += sprintf(dp, "%s", heard[i].name[0] ? heard[i].name : "(unnamed)");
+      any = true;
+    }
+    if (!any) strcpy(reply, "-none-");
+  } else if (memcmp(command, "discover.neighbors", 18) == 0) {
+    advert();   // zero-hop self-advert - same underlying action the old CLI's discover.neighbors triggered
+    strcpy(reply, "OK - Discover sent");
+  } else if (memcmp(command, "get radio", 9) == 0) {
+    sprintf(reply, "%.3f,%.1f,%d,%d", _prefs.freq, _prefs.bw, (int)_prefs.sf, (int)_prefs.cr);
+  } else if (memcmp(command, "set radio ", 10) == 0) {
+    float f, bw; int sf, cr;
+    if (sscanf(command + 10, "%f,%f,%d,%d", &f, &bw, &sf, &cr) == 4) {
+      _prefs.freq = f; _prefs.bw = bw; _prefs.sf = (uint8_t)sf; _prefs.cr = (uint8_t)cr;
+      radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "ERROR: usage: set radio freq,bw,sf,cr");
+    }
+  } else if (memcmp(command, "set name ", 9) == 0) {
+    strncpy(_prefs.node_name, command + 9, sizeof(_prefs.node_name) - 1);
+    _prefs.node_name[sizeof(_prefs.node_name) - 1] = 0;
+    savePrefs();
+    strcpy(reply, "OK");
+  } else if (memcmp(command, "set lat ", 8) == 0) {
+    sensors.node_lat = atof(command + 8);
+    savePrefs();
+    strcpy(reply, "OK");
+  } else if (memcmp(command, "set lon ", 8) == 0) {
+    sensors.node_lon = atof(command + 8);
+    savePrefs();
+    strcpy(reply, "OK");
+  } else if (memcmp(command, "get name", 8) == 0) {
+    strcpy(reply, _prefs.node_name);
+  } else if (memcmp(command, "reboot", 6) == 0) {
+    board.reboot();
+  } else {
+    strcpy(reply, "Unknown command");
+  }
+}
+#endif
