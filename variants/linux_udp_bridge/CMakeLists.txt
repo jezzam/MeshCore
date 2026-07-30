@@ -85,6 +85,11 @@ target_compile_definitions(meshcore_repeater PRIVATE
   ENABLE_ADVERT_ON_BOOT=1
   ENABLE_PRIVATE_KEY_IMPORT=1
   ENABLE_PRIVATE_KEY_EXPORT=1
+  # Per-packet RX/TX logging (type/route/payload_len/SNR/RSSI/hash) to stdout via
+  # Serial.printf - not gated behind ARDUINO like MESH_DEBUG_PRINTLN is, so this
+  # actually takes effect on this Linux variant. Enabled to see what's arriving
+  # once a packet clears format/checksum validation in Dispatcher::checkRecv().
+  MESH_PACKET_LOGGING=1
   # Brisbane/SEQ MeshCore default preset (MBUG wiki, wiki.mbug.com.au/en/Meshcore/Settings) -
   # see Research_beginning_notes.md for provenance. Must match global_conf_1302.json's
   # radio_0/chan_Lora_std retune, and whatever the local mesh is actually using -
